@@ -27,15 +27,6 @@ public:
 	virtual ~CMRDCA();
 	virtual void cluster(int Kclusters);
 
-	int getM() const {
-		return m;
-	}
-
-	void setM(int m = DEFAULT_M) {
-		this->m = m;
-	}
-
-	static const int DEFAULT_M = 2;
 	static const int BIG_CONSTANT = std::numeric_limits<int>::max()/100;
 	static const long TOTALTIMELIMITSECONDS = 86400;
 	static const int TIMELIMIT = 1800;
@@ -44,48 +35,35 @@ public:
 	double calcJ(const util::CrispCluster &cluster) const;
 	std::shared_ptr<std::vector<util::CrispCluster> > getClusters() { return clusters; 	 }
 	std::shared_ptr<std::vector<util::CrispCluster> > getClustersCopy() const;
-	static int getBestClusterIndex(const std::shared_ptr<std::vector<util::CrispCluster> >& clusters, int i);
 	static void seed_random_engine(unsigned seed);
-
-	bool isPossibilisticMode() const {
-		return possibilisticMode;
-	}
-
-	void setPossibilisticMode(bool possibilisticMode = false) {
-		this->possibilisticMode = possibilisticMode;
-	}
 
 private:
 	const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMatrices;
-	int m = DEFAULT_M;
-	bool possibilisticMode = false;
-	double oneOverMMinusOne = 1.0/(m - 1.0);
 	time_t initialTime = time(NULL);
 	static std::default_random_engine generator;
+	bool clusterAssign(std::vector<util::CrispCluster> &clusters);
+	int isCenterOf(int index);
 
-
-	void updateUik(int i, util::CrispCluster &fc, int K);
-	double maxRegret(int i, int gk, const util::CrispCluster &cluster) const;
-	double calcRegret(const util::CrispCluster &c, double currentRegret) const;
-	double calcRegret(const util::CrispCluster &c, int center, double currentRegret) const;
+	double weightedAvgDissim(int element, int medoid, const util::CrispCluster &cluster) const;
+	double minimizeRegret(const util::CrispCluster &c, double currentRegret) const;
+	double minimizeRegret(const util::CrispCluster &c, int center, double currentRegret) const;
 protected:
 	const int nElems;
 	std::uniform_int_distribution<int> distribution;
 	const int nCriteria;
 	double maxWeightAbsoluteDifferenceGlobal = 1.0;
+	std::vector<int> clusterIndexForElement;
+	void bestPrototypes();
 
 	int K;
 	std::shared_ptr<std::vector<util::CrispCluster> > clusters;
 	int currentIteration;
 	double lastJ;
-	double epsilon = 1E-4;
+	double epsilon = 1E-6;
 	int iterationLimit = 1000;
 	void initialize();
-	void updateMembershipDegrees(util::CrispCluster &fc, int K);
-	void bestPrototypes();
 	double updateWeights(util::CrispCluster &cluster, double maxValue, int clusterNum);
 	bool timeIsUp() const;
-	// void addEquations(int el, double uik, int ck, glp_prob *lp, int pvarIndex);
 
 };
 

@@ -49,10 +49,12 @@ void CMRDCAGlobal::cluster(int Kclusters) {
 
 
 		// Step 3: definition of the best partition
+		/* FIXME
 		for (int k = 0; k < this->K; k++) {
 			util::CrispCluster &fuzzyCluster = this->clusters.get()->at(k);
 			updateMembershipDegrees(fuzzyCluster, K);
 		}
+		*/
 
 		// Stop criterion
 		const double newJ = this->calcJ(this->clusters);

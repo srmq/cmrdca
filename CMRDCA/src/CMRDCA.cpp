@@ -25,14 +25,12 @@ std::default_random_engine CMRDCA::generator(1u);
 CMRDCA::CMRDCA(const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMatrices) :
 		timeLimitAchieved(false),
 		dissimMatrices(dissimMatrices),
-		m(CMRDCA::DEFAULT_M),
-		possibilisticMode(false),
-		oneOverMMinusOne(1.0/(m - 1.0)),
 		initialTime(time(NULL)),
 		nElems(dissimMatrices.front()->length()),
 		distribution(0,this->nElems - 1),
 		nCriteria(dissimMatrices.size()),
 		maxWeightAbsoluteDifferenceGlobal(1.0),
+		clusterIndexForElement(this->nElems, -1),
 		currentIteration(0),
 		lastJ(std::numeric_limits<double>::max()),
 		epsilon(1E-4),
@@ -49,28 +47,28 @@ void CMRDCA::cluster(int Kclusters) {
 	this->K = Kclusters;
 	this->initialize();
 	bool stop;
+	bool changed;
 	do {
 		// Step 1: computation of the best prototypes
 		bestPrototypes();
 
-		for (int k = 0; k < this->K; k++) {
-			util::CrispCluster &currentCluster = this->clusters.get()->at(k);
-			const double maxValue = calcJ(currentCluster);
-			const double regret = updateWeights(currentCluster, maxValue, k);
-			if (regret == -1) {
-				std::clog << "WARNING: Could not optimize weights for cluster " + k;
+		if (this->dissimMatrices.size() > 1) {
+			for (int k = 0; k < this->K; k++) {
+				util::CrispCluster &currentCluster = this->clusters.get()->at(k);
+				const double maxValue = calcJ(currentCluster);
+				const double regret = updateWeights(currentCluster, maxValue, k);
+				if (regret == -1) {
+					std::clog << "WARNING: Could not optimize weights for cluster " + k;
+				}
 			}
 		}
 
 		// Step 3: definition of the best partition
-		for (int k = 0; k < this->K; k++) {
-			util::CrispCluster &fuzzyCluster = this->clusters.get()->at(k);
-			updateMembershipDegrees(fuzzyCluster, K);
-		}
+		changed = clusterAssign(*(this->clusters.get()));
 
 		// Stop criterion
 		const double newJ = this->calcJ(this->clusters);
-		stop = abs(newJ - this->lastJ) <= this->epsilon
+		stop = !changed || abs(newJ - this->lastJ) <= this->epsilon
 				|| this->currentIteration > this->iterationLimit;
 		this->lastJ = newJ;
 		if (timeIsUp()) {
@@ -110,16 +108,17 @@ void CMRDCA::bestPrototypes() {
 		double bestResultForThisK = BIG_CONSTANT;
 		int newGk = 0;
 		util::CrispCluster &currentCluster = clustvecpoint->at(k);
-		for (int h = 0; h < this->nElems; h++) {
-			double resultForThisK = 0.0;
-			for(int i = 0; i < this->nElems; i++) {
-				resultForThisK +=
-						1// FIXME pow(currentCluster.getMembershipDegree(i), this->m)
-						*this->maxRegret(i, h, currentCluster);
+		for (int candidateMedoid = 0; candidateMedoid < this->nElems; candidateMedoid++) {
+			double totDissimForThisMedoid = 0.0;
+			for(std::set<int>::const_iterator cit = currentCluster.getElements().get()->begin(); cit != currentCluster.getElements().get()->end(); cit++) {
+				totDissimForThisMedoid +=
+						this->weightedAvgDissim(*cit, candidateMedoid, currentCluster);
+				if (totDissimForThisMedoid >= bestResultForThisK)
+					break;
 			}
-			if (resultForThisK < bestResultForThisK) {
-				bestResultForThisK = resultForThisK;
-				newGk = h;
+			if (totDissimForThisMedoid < bestResultForThisK) {
+				bestResultForThisK = totDissimForThisMedoid;
+				newGk = candidateMedoid;
 			}
 		}
 		currentCluster.setCenter(newGk);
@@ -147,9 +146,9 @@ void CMRDCA::initialize() {
 			clustvecpoint->push_back(fc);
 		}
 	}
-	for (unsigned int clust = 0; clust < clustvecpoint->size(); ++clust) {
-		updateMembershipDegrees(clustvecpoint->at(clust), this->K);
-	}
+
+	clusterAssign(*(this->clusters.get()));
+
 	this->lastJ = calcJ(this->clusters);
 
 }
@@ -165,53 +164,40 @@ double CMRDCA::calcJ(const std::shared_ptr<std::vector<util::CrispCluster> > &cl
 }
 
 double CMRDCA::calcJ(const util::CrispCluster &cluster) const {
-	return calcRegret(cluster, BIG_CONSTANT);
+	double clusterJ = 0.0;
+	for (std::set<int>::const_iterator cit = cluster.getElements().get()->begin(); cit != cluster.getElements().get()->end(); cit++) {
+		clusterJ += weightedAvgDissim(*cit, cluster.getCenter(), cluster);
+	}
+
+	return clusterJ;
+
 }
 
-double CMRDCA::calcRegret(const util::CrispCluster &c, double currentRegret) const {
-	return calcRegret(c, c.getCenter(), currentRegret);
+double CMRDCA::minimizeRegret(const util::CrispCluster &c, double currentRegret) const {
+	return minimizeRegret(c, c.getCenter(), currentRegret);
 }
 
-double CMRDCA::calcRegret(const util::CrispCluster &c, int center, double currentRegret) const {
+double CMRDCA::minimizeRegret(const util::CrispCluster &c, int center, double currentRegret) const {
 	double sumRegret = 0.0;
-	for (int el = 0; el < this->nElems; el++) {
-		sumRegret += /* pow(c.getMembershipDegree(el), this->m)* FIXME */ maxRegret(el, center, c);
+	for (std::set<int>::const_iterator cit = c.getElements().get()->begin(); cit != c.getElements().get()->end(); cit++) {
+		sumRegret += weightedAvgDissim(*cit, center, c);
 		if (sumRegret > currentRegret) return BIG_CONSTANT;
 	}
 
 	return sumRegret;
 }
 
-void CMRDCA::updateMembershipDegrees(util::CrispCluster &fc, int K) {
-	for (int i = 0; i < this->nElems; ++i) {
-		updateUik(i, fc, K);
-	}
-}
-
-void CMRDCA::updateUik(int i, util::CrispCluster &fc, int K) {
-	double uik = 0.0;
-	const double sumMultiplier = pow(maxRegret(i, fc.getCenter(), fc), oneOverMMinusOne);
-	for (int h = 0; h < K; h++) {
-		std::vector<util::CrispCluster> * const clustvecpoint = this->clusters.get();
-		const util::CrispCluster &theHcluster= clustvecpoint->at(h);
-		const double denominator = pow(maxRegret(i, theHcluster.getCenter(), theHcluster), oneOverMMinusOne);
-		uik += sumMultiplier/denominator;
-	}
-	//FIXME fc.updateMemberhipDegree(i, 1.0/uik);
-
-
-}
-
-double CMRDCA::maxRegret(int i, int gk, const util::CrispCluster &cluster) const {
-	double maxRegret = std::numeric_limits<double>::min();
-	double myRegret;
+double CMRDCA::weightedAvgDissim(int element, int medoid, const util::CrispCluster &cluster) const {
+	double avgDissim = 0;
+	double sumWeights = 0;
 	for (int j = 0; j < nCriteria; ++j) {
-		myRegret = this->dissimMatrices[j]->getDissim(i, gk) * cluster.weightOf(j);
-		if (myRegret > maxRegret) {
-			maxRegret = myRegret;
-		}
+		const double critJWeight = cluster.weightOf(j);
+		avgDissim += this->dissimMatrices[j]->getDissim(element, medoid) * critJWeight;
+		sumWeights += critJWeight;
 	}
-	return maxRegret;
+	avgDissim /= sumWeights;
+
+	return avgDissim;
 }
 
 
@@ -222,28 +208,64 @@ std::shared_ptr<std::vector<util::CrispCluster> > CMRDCA::getClustersCopy() cons
 	return result;
 }
 
-int CMRDCA::getBestClusterIndex(
-		const std::shared_ptr<std::vector<util::CrispCluster> >& clusters,
-		int i) {
-
-	//double bestMemberShipDegree = BIG_CONSTANT*-1;
-	int bestIndex = -1;
-	const int clustersSize = (int) clusters->size();
-	for (int k = 0; k < clustersSize; k++) {
-		//util::CrispCluster const &fc = clusters->at(k);
-		//FIXME const double membershipDegree = fc.getMembershipDegree(i);
-		/*
-		if (membershipDegree > bestMemberShipDegree) {
-			bestMemberShipDegree = membershipDegree;
-			bestIndex = k;
-		}
-		*/
-	}
-	return bestIndex;
-}
-
 void CMRDCA::seed_random_engine(unsigned seed) {
 	CMRDCA::generator.seed(seed);
+}
+
+bool CMRDCA::clusterAssign(std::vector<util::CrispCluster> &clusters) {
+	bool hasChanged = false;
+	for (int i = 0; i < this->nElems; i++) {
+		int centerOf;
+		if ((centerOf = isCenterOf(i)) == -1) {
+			//element i is not the medoid of any cluster
+			int clusterIndexMinDist = -1;
+			double minDist = this->BIG_CONSTANT;
+			if (this->clusterIndexForElement[i] >= 0 && this->clusterIndexForElement[i] < (int)clusters.size()) {
+				clusterIndexMinDist = clusterIndexForElement[i];
+				minDist = weightedAvgDissim(i, clusters[clusterIndexMinDist].getCenter(), clusters[clusterIndexMinDist]);
+			}
+
+			for (size_t k = 0; k < clusters.size(); k++) {
+				const double myDist = weightedAvgDissim(i, clusters[k].getCenter(), clusters[k]);
+				if ((myDist + epsilon) < minDist) {
+					minDist = myDist;
+					clusterIndexMinDist = k;
+				}
+			}
+
+			if (this->clusterIndexForElement[i] != clusterIndexMinDist) {
+				if (this->clusterIndexForElement[i] >= 0 && this->clusterIndexForElement[i] < (int)clusters.size()) {
+					clusters[this->clusterIndexForElement[i]].remove(i);
+				}
+				this->clusterIndexForElement[i] = clusterIndexMinDist;
+				clusters[this->clusterIndexForElement[i]].insert(i);
+				hasChanged = true;
+			}
+		} else {
+			//i is medoid of a cluster
+			if (this->clusterIndexForElement[i] != centerOf) {
+				if (this->clusterIndexForElement[i] >= 0 && this->clusterIndexForElement[i] < (int)clusters.size()) {
+					clusters[this->clusterIndexForElement[i]].remove(i);
+				}
+				this->clusterIndexForElement[i] = centerOf;
+				clusters[centerOf].insert(i);
+				hasChanged = true;
+			}
+		}
+	}
+
+	return hasChanged;
+}
+
+// Return the index of the first cluster in which the index passed as parameter is the center
+int CMRDCA::isCenterOf(int index) {
+	std::vector<util::CrispCluster> &cp = *(this->clusters.get());
+	for (size_t i = 0; i <= cp.size(); i++) {
+		if (cp[i].getCenter() == index) {
+			return i;
+		}
+	}
+	return -1;
 }
 
 } /* namespace clustering */
