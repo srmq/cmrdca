@@ -1,12 +1,12 @@
 /*
- * FuzzyCluster.h
+ * CrispCluster.h
  *
  *  Created on: Jun 19, 2013
  *      Author: srmq
  */
 
-#ifndef FUZZYCLUSTER_H_
-#define FUZZYCLUSTER_H_
+#ifndef CRISPCLUSTER_H_
+#define CRISPCLUSTER_H_
 
 #include <map>
 #include <memory>
@@ -16,11 +16,11 @@
 
 namespace util {
 
-class FuzzyCluster {
+class CrispCluster {
 public:
-	FuzzyCluster(const unsigned int nelems, const int p);
-	FuzzyCluster(const util::FuzzyCluster& copyFrom);
-	virtual ~FuzzyCluster();
+	CrispCluster(const int p);
+	CrispCluster(const util::CrispCluster& copyFrom);
+	virtual ~CrispCluster();
 	int getCenter() const {
 		return center;
 	}
@@ -30,11 +30,12 @@ public:
 	std::shared_ptr<double> getWeights(int *p);
 	void setWeights(std::shared_ptr<double> weightPtr);
 
-	void updateMemberhipDegree(const int elem, const double value) {
-		this->membershipDegrees[elem] = value;
-		this->elements->insert(elem);
+	bool insert(int element);
+	bool remove(int element);
+	void setElements(std::shared_ptr<std::set<int> > elements) {
+		this->elements = elements;
 	}
-	double getMembershipDegree(int elem) const;
+
 	double weightOf(int criterion) const {
 		assert(criterion >= 0 && criterion < this->p);
 		return this->lambdaWeights.get()[criterion];
@@ -42,15 +43,13 @@ public:
 	std::shared_ptr<std::set<int>> getElements() const;
 
 private:
-	unsigned int nelems;
 	const int p;
 	int center;
 	std::shared_ptr<double> lambdaWeights;
-	std::map<int, double> membershipDegrees;
 	std::shared_ptr<std::set<int>> elements;
 
 
 };
 
 } /* namespace util */
-#endif /* FUZZYCLUSTER_H_ */
+#endif /* CRISPCLUSTER_H_ */

@@ -11,7 +11,7 @@
 #include <ctime>
 #include <iostream>
 #include <sstream>
-#include "FuzzyCluster.h"
+#include "CrispCluster.h"
 
 namespace clustering {
 
@@ -27,7 +27,7 @@ void CMRDCAGlobal::cluster(int Kclusters) {
 	this->K = Kclusters;
 	this->initialize();
 	{
-		std::vector<util::FuzzyCluster>::iterator clusterIterator = this->clusters.get()->begin();
+		std::vector<util::CrispCluster>::iterator clusterIterator = this->clusters.get()->begin();
 		std::shared_ptr<double> clusterWeights = (*clusterIterator).getWeights(NULL);
 		clusterIterator++;
 		while (clusterIterator != this->clusters.get()->end()) {
@@ -50,7 +50,7 @@ void CMRDCAGlobal::cluster(int Kclusters) {
 
 		// Step 3: definition of the best partition
 		for (int k = 0; k < this->K; k++) {
-			util::FuzzyCluster &fuzzyCluster = this->clusters.get()->at(k);
+			util::CrispCluster &fuzzyCluster = this->clusters.get()->at(k);
 			updateMembershipDegrees(fuzzyCluster, K);
 		}
 
@@ -73,7 +73,7 @@ void CMRDCAGlobal::cluster(int Kclusters) {
 }
 
 double CMRDCAGlobal::updateWeights(
-		std::shared_ptr<std::vector<util::FuzzyCluster> >& clusters,
+		std::shared_ptr<std::vector<util::CrispCluster> >& clusters,
 		double maxValue) {
 
 	double regret = -1;

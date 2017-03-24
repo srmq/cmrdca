@@ -19,7 +19,7 @@ public:
 	virtual void cluster(int Kclusters);
 
 private:
-	double updateWeights(std::shared_ptr<std::vector<util::FuzzyCluster> > &clusters, double maxValue);
+	double updateWeights(std::shared_ptr<std::vector<util::CrispCluster> > &clusters, double maxValue);
 };
 
 }

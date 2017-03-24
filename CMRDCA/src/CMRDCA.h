@@ -9,7 +9,7 @@
 #define CMRDCA_H_
 
 #include "DissimMatrix.h"
-#include "FuzzyCluster.h"
+#include "CrispCluster.h"
 #include <vector>
 #include <memory>
 #include <random>
@@ -40,11 +40,11 @@ public:
 	static const long TOTALTIMELIMITSECONDS = 86400;
 	static const int TIMELIMIT = 1800;
 	bool timeLimitAchieved = false;
-	double calcJ(const std::shared_ptr<std::vector<util::FuzzyCluster> > &clusters) const;
-	double calcJ(const util::FuzzyCluster &cluster) const;
-	std::shared_ptr<std::vector<util::FuzzyCluster> > getClusters() { return clusters; 	 }
-	std::shared_ptr<std::vector<util::FuzzyCluster> > getClustersCopy() const;
-	static int getBestClusterIndex(const std::shared_ptr<std::vector<util::FuzzyCluster> >& clusters, int i);
+	double calcJ(const std::shared_ptr<std::vector<util::CrispCluster> > &clusters) const;
+	double calcJ(const util::CrispCluster &cluster) const;
+	std::shared_ptr<std::vector<util::CrispCluster> > getClusters() { return clusters; 	 }
+	std::shared_ptr<std::vector<util::CrispCluster> > getClustersCopy() const;
+	static int getBestClusterIndex(const std::shared_ptr<std::vector<util::CrispCluster> >& clusters, int i);
 	static void seed_random_engine(unsigned seed);
 
 	bool isPossibilisticMode() const {
@@ -64,10 +64,10 @@ private:
 	static std::default_random_engine generator;
 
 
-	void updateUik(int i, util::FuzzyCluster &fc, int K);
-	double maxRegret(int i, int gk, const util::FuzzyCluster &cluster) const;
-	double calcRegret(const util::FuzzyCluster &c, double currentRegret) const;
-	double calcRegret(const util::FuzzyCluster &c, int center, double currentRegret) const;
+	void updateUik(int i, util::CrispCluster &fc, int K);
+	double maxRegret(int i, int gk, const util::CrispCluster &cluster) const;
+	double calcRegret(const util::CrispCluster &c, double currentRegret) const;
+	double calcRegret(const util::CrispCluster &c, int center, double currentRegret) const;
 protected:
 	const int nElems;
 	std::uniform_int_distribution<int> distribution;
@@ -75,15 +75,15 @@ protected:
 	double maxWeightAbsoluteDifferenceGlobal = 1.0;
 
 	int K;
-	std::shared_ptr<std::vector<util::FuzzyCluster> > clusters;
+	std::shared_ptr<std::vector<util::CrispCluster> > clusters;
 	int currentIteration;
 	double lastJ;
 	double epsilon = 1E-4;
 	int iterationLimit = 1000;
 	void initialize();
-	void updateMembershipDegrees(util::FuzzyCluster &fc, int K);
+	void updateMembershipDegrees(util::CrispCluster &fc, int K);
 	void bestPrototypes();
-	double updateWeights(util::FuzzyCluster &cluster, double maxValue, int clusterNum);
+	double updateWeights(util::CrispCluster &cluster, double maxValue, int clusterNum);
 	bool timeIsUp() const;
 	// void addEquations(int el, double uik, int ck, glp_prob *lp, int pvarIndex);
 
