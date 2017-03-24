@@ -1,12 +1,12 @@
 /*
- * FWRDCA.h
+ * CMRDCA.h
  *
  *  Created on: May 27, 2013
  *      Author: srmq
  */
 
-#ifndef FWRDCA_H_
-#define FWRDCA_H_
+#ifndef CMRDCA_H_
+#define CMRDCA_H_
 
 #include "DissimMatrix.h"
 #include "FuzzyCluster.h"
@@ -15,17 +15,16 @@
 #include <random>
 #include <limits>
 #include <ctime>
-#include <glpk.h>
 #include <iostream>
 #include <sstream>
 
 
 namespace clustering {
 
-class FWRDCA {
+class CMRDCA {
 public:
-	FWRDCA(const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMatrices);
-	virtual ~FWRDCA();
+	CMRDCA(const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMatrices);
+	virtual ~CMRDCA();
 	virtual void cluster(int Kclusters);
 
 	int getM() const {
@@ -65,7 +64,6 @@ private:
 	static std::default_random_engine generator;
 
 
-	void glpkInitialize();
 	void updateUik(int i, util::FuzzyCluster &fc, int K);
 	double maxRegret(int i, int gk, const util::FuzzyCluster &cluster) const;
 	double calcRegret(const util::FuzzyCluster &c, double currentRegret) const;
@@ -74,7 +72,6 @@ protected:
 	const int nElems;
 	std::uniform_int_distribution<int> distribution;
 	const int nCriteria;
-	glp_smcp glpParms;
 	double maxWeightAbsoluteDifferenceGlobal = 1.0;
 
 	int K;
@@ -88,9 +85,9 @@ protected:
 	void bestPrototypes();
 	double updateWeights(util::FuzzyCluster &cluster, double maxValue, int clusterNum);
 	bool timeIsUp() const;
-	void addEquations(int el, double uik, int ck, glp_prob *lp, int pvarIndex);
+	// void addEquations(int el, double uik, int ck, glp_prob *lp, int pvarIndex);
 
 };
 
 } /* namespace clustering */
-#endif /* FWRDCA_H_ */
+#endif /* CMRDCA_H_ */

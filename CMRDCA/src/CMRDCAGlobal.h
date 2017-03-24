@@ -1,21 +1,21 @@
 /*
- * FWRDCAGlobal.h
+ * CMRDCAGlobal.h
  *
  *  Created on: Sep 2, 2013
  *      Author: srmq
  */
 
-#ifndef FWRDCAGLOBAL_H_
-#define FWRDCAGLOBAL_H_
+#ifndef CMRDCAGLOBAL_H_
+#define CMRDCAGLOBAL_H_
 
-#include "FWRDCA.h"
+#include "CMRDCA.h"
 
 namespace clustering {
 
-class FWRDCAGlobal : public FWRDCA {
+class CMRDCAGlobal : public CMRDCA {
 public:
-	FWRDCAGlobal(const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMatrices);
-	virtual ~FWRDCAGlobal();
+	CMRDCAGlobal(const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMatrices);
+	virtual ~CMRDCAGlobal();
 	virtual void cluster(int Kclusters);
 
 private:
@@ -24,4 +24,4 @@ private:
 
 }
 
-#endif /* FWRDCAGLOBAL_H_ */
+#endif /* CMRDCAGLOBAL_H_ */
