@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>FWRDCAIris</name>
+	<name>CMRDCA-SFProcessor</name>
 	<comment></comment>
 	<projects>
-		<project>FWRDCA</project>
+		<project>CMRDCA</project>
 	</projects>
 	<buildSpec>
 		<buildCommand>
