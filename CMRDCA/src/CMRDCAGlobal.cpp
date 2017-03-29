@@ -37,28 +37,28 @@ void CMRDCAGlobal::cluster(int Kclusters) {
 	}
 
 	bool stop;
+	bool changed;
 	do {
 		// Step 1: computation of the best prototypes
 		bestPrototypes();
 
 		const double maxValue = calcJ(this->clusters);
-		const double regret = updateWeights(this->clusters, maxValue);
-		if (regret == -1) {
-			std::clog << "WARNING: Could not optimize weights at iteration " + this->currentIteration;
+
+		if (this->dissimMatrices.size() > 1) {
+			// Step 2: update weights
+			const double regret = updateWeights(this->clusters, maxValue);
+			if (regret == -1) {
+				std::clog << "WARNING: Could not optimize weights at iteration " + this->currentIteration;
+			}
 		}
 
 
 		// Step 3: definition of the best partition
-		/* FIXME
-		for (int k = 0; k < this->K; k++) {
-			util::CrispCluster &fuzzyCluster = this->clusters.get()->at(k);
-			updateMembershipDegrees(fuzzyCluster, K);
-		}
-		*/
+		changed = clusterAssign(*(this->clusters.get()));
 
 		// Stop criterion
 		const double newJ = this->calcJ(this->clusters);
-		stop = abs(newJ - this->lastJ) <= this->epsilon
+		stop = !changed || abs(newJ - this->lastJ) <= this->epsilon
 				|| this->currentIteration > this->iterationLimit;
 		this->lastJ = newJ;
 		if (timeIsUp()) {
@@ -80,7 +80,32 @@ double CMRDCAGlobal::updateWeights(
 
 	double regret = -1;
 
-	//FIXME TODO
+	double denominatorByMatrix[nCriteria];
+
+	bool allDenNonZero = true;
+
+	for (int j = 0; j < nCriteria; j++) {
+		denominatorByMatrix[j] = 0;
+		for (int el = 0; el < nElems; el++) {
+			denominatorByMatrix[j] +=  this->dissimMatrices[j]->getDissim(el, clusters->at(clusterIndexForElement[el]).getCenter());
+		}
+		if (denominatorByMatrix[j] < epsilon) {
+			allDenNonZero = false;
+		}
+	}
+
+	if (allDenNonZero) {
+		double numerator = denominatorByMatrix[0];
+		for (int h = 1; h < nCriteria; h++) {
+			numerator *= denominatorByMatrix[h];
+		}
+		numerator = pow(numerator, 1.0/(double)nCriteria);
+		double *sharedWeights = clusters->at(0).getWeights(NULL).get();
+		for (int i = 0; i < nCriteria; i++) {
+			sharedWeights[i] = numerator/denominatorByMatrix[i];
+		}
+		regret = calcJ(clusters);
+	}
 
 
 	return regret;

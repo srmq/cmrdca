@@ -24,8 +24,8 @@ std::default_random_engine CMRDCA::generator(1u);
 
 CMRDCA::CMRDCA(const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMatrices) :
 		timeLimitAchieved(false),
-		dissimMatrices(dissimMatrices),
 		initialTime(time(NULL)),
+		dissimMatrices(dissimMatrices),
 		nElems(dissimMatrices.front()->length()),
 		distribution(0,this->nElems - 1),
 		nCriteria(dissimMatrices.size()),
@@ -53,6 +53,7 @@ void CMRDCA::cluster(int Kclusters) {
 		bestPrototypes();
 
 		if (this->dissimMatrices.size() > 1) {
+			// Step 2: update weights
 			for (int k = 0; k < this->K; k++) {
 				util::CrispCluster &currentCluster = this->clusters.get()->at(k);
 				const double maxValue = calcJ(currentCluster);
@@ -95,8 +96,45 @@ bool CMRDCA::timeIsUp() const {
 }
 
 double CMRDCA::updateWeights(util::CrispCluster &cluster, double maxValue, int clusterNum) {
-	double regret = -1;
-	//FIXME todo
+	int p;
+	cluster.getWeights(&p);
+
+	double num = 1.0;
+	for (int h = 0; h < p; h++) { //productory
+		double sumNum = 0;
+		for (std::set<int>::const_iterator elI = cluster.getElements().get()->begin(); elI != cluster.getElements().get()->end(); elI++) {
+			sumNum += this->dissimMatrices[h]->getDissim(*elI, cluster.getCenter());
+		}
+		num *= sumNum;
+	}
+	double powNum = pow(num, 1.0/p);
+
+	std::shared_ptr<double> newWeightsShrPtr(new double[p], std::default_delete<double[]>());
+	double *newWeights = newWeightsShrPtr.get();
+
+	bool allDenNonZero = true;
+
+	for (int j = 0; j < p; j++) {
+		double denominator = 0;
+		for (std::set<int>::const_iterator elI = cluster.getElements().get()->begin(); elI != cluster.getElements().get()->end(); elI++) {
+			denominator += this->dissimMatrices[j]->getDissim(*elI, cluster.getCenter());
+		}
+		if (denominator > epsilon) {
+			newWeights[j] = powNum / denominator;
+		} else {
+			allDenNonZero = false;
+			break;
+		}
+	}
+
+	double regret;
+	if (allDenNonZero) {
+		cluster.setWeights(newWeightsShrPtr);
+		regret = calcJ(cluster);
+	} else {
+		regret = -1;
+	}
+
 
 	return regret;
 }
@@ -260,7 +298,7 @@ bool CMRDCA::clusterAssign(std::vector<util::CrispCluster> &clusters) {
 // Return the index of the first cluster in which the index passed as parameter is the center
 int CMRDCA::isCenterOf(int index) {
 	std::vector<util::CrispCluster> &cp = *(this->clusters.get());
-	for (size_t i = 0; i <= cp.size(); i++) {
+	for (size_t i = 0; i < cp.size(); i++) {
 		if (cp[i].getCenter() == index) {
 			return i;
 		}

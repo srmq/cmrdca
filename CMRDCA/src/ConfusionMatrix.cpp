@@ -196,7 +196,7 @@ double ConfusionMatrix::nMIIndex() const {
 
 }
 
-void ConfusionMatrix::printMatrix(std::ostream out) const {
+void ConfusionMatrix::printMatrix(std::ostream &out) const {
 	out << "Clusters\tClasses" << std::endl;
 	if (classNames.use_count() != 0) {
 		assert((int) (classNames.get()->size()) == (nClasses));

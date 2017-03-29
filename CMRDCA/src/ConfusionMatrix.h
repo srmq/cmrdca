@@ -79,7 +79,7 @@ public:
 	double OERCIndex() const;
 	double CRIndex() const;
 	double nMIIndex() const;
-	void printMatrix(std::ostream out) const;
+	void printMatrix(std::ostream &out) const;
 
 };
 

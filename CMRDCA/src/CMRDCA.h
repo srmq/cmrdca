@@ -36,18 +36,19 @@ public:
 	std::shared_ptr<std::vector<util::CrispCluster> > getClusters() { return clusters; 	 }
 	std::shared_ptr<std::vector<util::CrispCluster> > getClustersCopy() const;
 	static void seed_random_engine(unsigned seed);
+	int getIterationsToConverge() {return this->currentIteration; }
 
 private:
-	const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMatrices;
 	time_t initialTime = time(NULL);
 	static std::default_random_engine generator;
-	bool clusterAssign(std::vector<util::CrispCluster> &clusters);
 	int isCenterOf(int index);
 
 	double weightedAvgDissim(int element, int medoid, const util::CrispCluster &cluster) const;
 	double minimizeRegret(const util::CrispCluster &c, double currentRegret) const;
 	double minimizeRegret(const util::CrispCluster &c, int center, double currentRegret) const;
+	double updateWeights(util::CrispCluster &cluster, double maxValue, int clusterNum);
 protected:
+	const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMatrices;
 	const int nElems;
 	std::uniform_int_distribution<int> distribution;
 	const int nCriteria;
@@ -62,8 +63,8 @@ protected:
 	double epsilon = 1E-6;
 	int iterationLimit = 1000;
 	void initialize();
-	double updateWeights(util::CrispCluster &cluster, double maxValue, int clusterNum);
 	bool timeIsUp() const;
+	bool clusterAssign(std::vector<util::CrispCluster> &clusters);
 
 };
 
