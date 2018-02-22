@@ -16,7 +16,7 @@
 namespace clustering {
 
 CMRDCAGlobal::CMRDCAGlobal(
-		const std::vector<std::shared_ptr<util::DissimMatrix> >& dissimMatrices) :
+		const std::vector<std::shared_ptr<util::IDissimMatrix> >& dissimMatrices) :
 		CMRDCA(dissimMatrices) {
 }
 
@@ -25,6 +25,7 @@ CMRDCAGlobal::~CMRDCAGlobal() {
 
 void CMRDCAGlobal::cluster(int Kclusters) {
 	this->K = Kclusters;
+	std::cout << "INFO: initializing" << std::endl;
 	this->initialize();
 	{
 		std::vector<util::CrispCluster>::iterator clusterIterator = this->clusters.get()->begin();
@@ -39,6 +40,7 @@ void CMRDCAGlobal::cluster(int Kclusters) {
 	bool stop;
 	bool changed;
 	do {
+		std::cout << "INFO: step 1 - computation of the best prototypes" << std::endl;
 		// Step 1: computation of the best prototypes
 		bestPrototypes();
 
@@ -46,13 +48,14 @@ void CMRDCAGlobal::cluster(int Kclusters) {
 
 		if (this->dissimMatrices.size() > 1) {
 			// Step 2: update weights
+			std::cout << "INFO: step 2 - updating weights" << std::endl;
 			const double regret = updateWeights(this->clusters, maxValue);
 			if (regret == -1) {
 				std::clog << "WARNING: Could not optimize weights at iteration " + this->currentIteration;
 			}
 		}
 
-
+		std::cout << "INFO: step 3 - assigning elements to clusters" << std::endl;
 		// Step 3: definition of the best partition
 		changed = clusterAssign(*(this->clusters.get()));
 
@@ -87,7 +90,7 @@ double CMRDCAGlobal::updateWeights(
 	for (int j = 0; j < nCriteria; j++) {
 		denominatorByMatrix[j] = 0;
 		for (int el = 0; el < nElems; el++) {
-			denominatorByMatrix[j] +=  this->dissimMatrices[j]->getDissim(el, clusters->at(clusterIndexForElement[el]).getCenter());
+			denominatorByMatrix[j] += distanceToMedoids(el, *(this->dissimMatrices[j].get()), *(clusters->at(clusterIndexForElement[el]).getMedoids().get()));
 		}
 		if (denominatorByMatrix[j] < epsilon) {
 			allDenNonZero = false;

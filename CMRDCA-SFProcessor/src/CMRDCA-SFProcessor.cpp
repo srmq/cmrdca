@@ -32,17 +32,22 @@
 static std::vector<std::string> inputFiles;
 static int k;
 static int numInicializacao;
-static int numIteracoes;
+static int numIteracoes = -1;
+static int numMedoids = 1;
 static std::string outputFile;
 static int n;
 static int numPrioriClusters;
-static std::vector<std::shared_ptr<util::DissimMatrix>> dissimMatrices;
+static std::vector<std::shared_ptr<util::IDissimMatrix>> dissimMatrices;
+static unsigned int procCount;
+static bool useDissimFloats = false;
+static bool useLocalMedoids = false;
 
-static std::pair<std::shared_ptr<util::DissimMatrix>, std::shared_ptr<std::vector<std::string> > >
+static std::pair<std::shared_ptr<util::IDissimMatrix>, std::shared_ptr<std::vector<std::string> > >
 	parseDissimMatrix(const std::string& fileName) {
 
 	std::ifstream f(fileName);
-	std::shared_ptr<std::vector<std::string> > objNamesPtr = std::shared_ptr<std::vector<std::string> >(new std::vector<std::string>(n));
+	std::shared_ptr<std::vector<std::string> > objNamesPtr = std::shared_ptr<std::vector<std::string> >(new std::vector<std::string>());
+	objNamesPtr->reserve(n);
 
 	for (int i = 0; i < n; i++) {
 		std::string line;
@@ -51,9 +56,10 @@ static std::pair<std::shared_ptr<util::DissimMatrix>, std::shared_ptr<std::vecto
 		objNamesPtr->push_back(line.substr(pos+1, std::string::npos));
 	}
 
-	std::shared_ptr<util::DissimMatrix> dissimMatrixPtr = std::shared_ptr<util::DissimMatrix>(new util::DissimMatrix(n));
+	std::shared_ptr<util::IDissimMatrix> dissimMatrixPtr =
+			std::shared_ptr<util::IDissimMatrix>(useDissimFloats ? static_cast<util::IDissimMatrix*>(new util::DissimMatrixFloat(n)) : static_cast<util::IDissimMatrix*>(new util::DissimMatrix(n)));
 
-	const char* delimiters = ",";
+	const char* delimiters = ",\t\r\n\f";
 	for (int i = 0; i < n; i++) {
 		std::string line;
 		getline(f, line);
@@ -61,7 +67,12 @@ static std::pair<std::shared_ptr<util::DissimMatrix>, std::shared_ptr<std::vecto
 		strcpy(cstr, line.c_str());
 		char *token = strtok(cstr, delimiters);
 		for (int j = 0; j <= i; j++) {
-			const double dissimValue = atof(token);
+			if (token == NULL)
+				std::cerr << "token Should not be NULL";
+			double dissimValue;
+			std::string s(token);
+			std::istringstream os(s);
+			os >> dissimValue;
 
 			dissimMatrixPtr->putDissim(i, j, dissimValue);
 			token = strtok(NULL, delimiters);
@@ -80,18 +91,20 @@ bool NameSort::operator() (std::pair<std::string*, int> &a, std::pair<std::strin
 }
 
 
-static std::shared_ptr<util::DissimMatrix>
+static std::shared_ptr<util::IDissimMatrix>
 	reorderedDissim(std::unordered_map<std::string*, int> &refOrder,
 			        std::vector<std::string> &currOrder,
-			        const util::DissimMatrix &dissim) {
+			        const util::IDissimMatrix &dissim) {
 
-	std::vector<std::pair<std::string*, int> > names(currOrder.size());
+	std::vector<std::pair<std::string*, int> > names;
+	names.reserve(currOrder.size());
 	for (int i = 0; i < (int)currOrder.size(); i++) {
 		std::string *strP = &currOrder[i];
 		names.push_back(std::make_pair(strP, i));
 	}
 	std::sort(names.begin(), names.end(), NameSort(refOrder));
-	std::shared_ptr<util::DissimMatrix> dissimMatrixPtr = std::shared_ptr<util::DissimMatrix>(new util::DissimMatrix(n));
+	std::shared_ptr<util::IDissimMatrix> dissimMatrixPtr =
+			std::shared_ptr<util::IDissimMatrix>(useDissimFloats ? static_cast<util::IDissimMatrix*>(new util::DissimMatrixFloat(n)) : static_cast<util::IDissimMatrix*>(new util::DissimMatrix(n)));
 	for (int i =0; i < n; i++) {
 		const int trI = names[i].second;
 		for (int j = 0; j <= i; j++) {
@@ -109,7 +122,7 @@ static void parseDissimMatrices() {
 	std::unordered_map<std::string*, int> refOrder;
 	std::shared_ptr<std::vector<std::string> > refNamesPtr;
 	for (std::vector<std::string>::const_iterator fNameIter = inputFiles.begin(); fNameIter != inputFiles.end(); fNameIter++) {
-		std::pair<std::shared_ptr<util::DissimMatrix>, std::shared_ptr<std::vector<std::string> > >
+		std::pair<std::shared_ptr<util::IDissimMatrix>, std::shared_ptr<std::vector<std::string> > >
 			parseResult = parseDissimMatrix(*fNameIter);
 		if (firstFile) {
 			refNamesPtr = parseResult.second;
@@ -139,7 +152,10 @@ void printIndices(int k,
 	for (int i = 0; i < (int)bestClusters->size(); i++) {
 			const util::CrispCluster& cluster = bestClusters->at(i);
 			out << "Cluster " << i << std::endl;
-			out << "Center: " << objectNames[cluster.getCenter()] << std::endl;
+			out << "Medoids: "  << std::endl;
+			for (std::set<int>::const_iterator cIt = cluster.getMedoids()->begin(); cIt != cluster.getMedoids()->end(); cIt++) {
+				out << objectNames[*cIt] << std::endl;
+			}
 			out << "-- BEGIN MEMBERS --" << std::endl;
 			const std::set<int> &elements = *(cluster.getElements().get());
 			for (std::set<int>::const_iterator elIt = elements.begin(); elIt != elements.end(); elIt++) {
@@ -223,6 +239,18 @@ static void readConfigFile(char configFileName[]) {
 		} else if (line.find("(numPrioriClusters)") != std::string::npos) {
 			getline(f, line);
 			numPrioriClusters = atoi(line.c_str());
+		} else if (line.find("(numMedoids)") != std::string::npos) {
+			getline(f, line);
+			numMedoids = atoi(line.c_str());
+		} else if (line.find("(numThreads)") != std::string::npos) {
+			getline(f, line);
+			procCount = atoi(line.c_str());
+		} else if (line.find("(useDissimFloats)") != std::string::npos) {
+			getline(f, line);
+			useDissimFloats = (atoi(line.c_str()) != 0);
+		} else if (line.find("(useLocalMedoids)") != std::string::npos) {
+			getline(f, line);
+			useLocalMedoids = (atoi(line.c_str()) != 0);
 		}
 	}
 
@@ -240,7 +268,10 @@ static std::shared_ptr<std::pair<std::vector<int>, std::vector<std::string> > >
 	std::shared_ptr<std::pair<typename std::vector<int>,
 	                typename std::vector<std::string> > >
 	                result(new std::pair<typename std::vector<int>,
-	                	   typename std::vector<std::string> >(std::vector<int>(n), std::vector<std::string>(n)));
+	                	   typename std::vector<std::string> >(std::vector<int>(), std::vector<std::string>()));
+
+	result->first.reserve(n);
+	result->second.reserve(n);
 
 	const char* delimiters = ",";
 	for (int i = 0; i < n; i++) {
@@ -249,9 +280,9 @@ static std::shared_ptr<std::pair<std::vector<int>, std::vector<std::string> > >
 		char cstr[line.length() + 1];
 		strcpy(cstr, line.c_str());
 		char *token = strtok(cstr, delimiters);
-		result->first[i] = atoi(token);
+		result->first.push_back(atoi(token));
 		token = strtok(NULL, delimiters);
-		result->second[i] = token;
+		result->second.push_back(token);
 	}
 	return result;
 }
@@ -261,16 +292,17 @@ int main(int argc, char *argv[]) {
 		std::cerr << "Should give name of config file as argument" << std::endl;
 		exit(-1);
 	}
+	procCount = std::thread::hardware_concurrency();
 	readConfigFile(argv[1]);
 	parseDissimMatrices();
 
 	std::shared_ptr<std::pair<std::vector<int>, std::vector<std::string> > > classLabelsAndNames = classLabelsForObjects();
-	std::vector<int> &classLabels = classLabelsAndNames->first;
-	std::vector<std::string> &objNames = classLabelsAndNames->second;
+	//std::vector<int> &classLabels = classLabelsAndNames->first;
+	//std::vector<std::string> &objNames = classLabelsAndNames->second;
 	double bestJ = std::numeric_limits<double>::max();
 
 	std::shared_ptr<std::vector<util::CrispCluster> > bestClusters;
-	const unsigned int procCount = 1; //std::thread::hardware_concurrency();
+
 
 	std::ofstream outFile(outputFile);
 	if (!outFile.is_open()) {
@@ -328,6 +360,11 @@ int main(int argc, char *argv[]) {
 					clusteringAlgo = new clustering::CMRDCAGlobal(dissimMatrices);
 					outFile << "RUNNING GLOBAL" << std::endl;
 				}
+				if (numIteracoes > 0) {
+					clusteringAlgo->setIterationLimit(numIteracoes);
+				}
+				clusteringAlgo->setNumbOfMedoids(numMedoids);
+				clusteringAlgo->setUseLocalMedoids(useLocalMedoids);
 				clusteringAlgo->cluster(k);
 				std::shared_ptr<std::vector<util::CrispCluster> > const myClusters = clusteringAlgo->getClusters();
 				const double myJ = clusteringAlgo->calcJ(myClusters);
@@ -345,7 +382,7 @@ int main(int argc, char *argv[]) {
 			bool amITheBest;
 			read(pipeParentChild[procId][0], &amITheBest, sizeof(bool)); // le resultado
 			if (amITheBest) {
-				printIndices(k, bestClusters, classLabels, objNames, bestJ, outFile);
+				printIndices(k, bestClusters, classLabelsAndNames->first, classLabelsAndNames->second, bestJ, outFile);
 			}
 		} else {			/* I am the master get results */
 			double overallBestJ;
@@ -383,6 +420,11 @@ int main(int argc, char *argv[]) {
 				clusteringAlgo = new clustering::CMRDCAGlobal(dissimMatrices);
 				outFile << "RUNNING GLOBAL" << std::endl;
 			}
+			if (numIteracoes > 0) {
+				clusteringAlgo->setIterationLimit(numIteracoes);
+			}
+			clusteringAlgo->setNumbOfMedoids(numMedoids);
+			clusteringAlgo->setUseLocalMedoids(useLocalMedoids);
 			clusteringAlgo->cluster(k);
 			std::shared_ptr<std::vector<util::CrispCluster> > const myClusters = clusteringAlgo->getClusters();
 			const double myJ = clusteringAlgo->calcJ(myClusters);
@@ -395,7 +437,7 @@ int main(int argc, char *argv[]) {
 			}
 			delete(clusteringAlgo);
 		}
-		printIndices(k, bestClusters, classLabels, objNames, bestJ, outFile);
+		printIndices(k, bestClusters, classLabelsAndNames->first, classLabelsAndNames->second, bestJ, outFile);
 	}
 	return(0);
 }

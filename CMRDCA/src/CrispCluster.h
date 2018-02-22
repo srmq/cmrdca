@@ -21,11 +21,11 @@ public:
 	CrispCluster(const int p);
 	CrispCluster(const util::CrispCluster& copyFrom);
 	virtual ~CrispCluster();
-	int getCenter() const {
-		return center;
+	std::shared_ptr<std::set<int> > getMedoids()  const {
+		return medoids;
 	}
-	void setCenter(int center) {
-		this->center = center;
+	void setMedoids(std::shared_ptr<std::set<int> > newMedoids) {
+		this->medoids = newMedoids;
 	}
 	std::shared_ptr<double> getWeights(int *p);
 	void setWeights(std::shared_ptr<double> weightPtr);
@@ -44,7 +44,7 @@ public:
 
 private:
 	const int p;
-	int center;
+	std::shared_ptr<std::set<int> > medoids;
 	std::shared_ptr<double> lambdaWeights;
 	std::shared_ptr<std::set<int>> elements;
 

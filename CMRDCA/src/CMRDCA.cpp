@@ -22,7 +22,7 @@ namespace clustering {
 
 std::default_random_engine CMRDCA::generator(1u);
 
-CMRDCA::CMRDCA(const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMatrices) :
+CMRDCA::CMRDCA(const std::vector<std::shared_ptr<util::IDissimMatrix>>& dissimMatrices) :
 		timeLimitAchieved(false),
 		initialTime(time(NULL)),
 		dissimMatrices(dissimMatrices),
@@ -33,8 +33,9 @@ CMRDCA::CMRDCA(const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMat
 		clusterIndexForElement(this->nElems, -1),
 		currentIteration(0),
 		lastJ(std::numeric_limits<double>::max()),
-		epsilon(1E-4),
-		iterationLimit(1000)
+		epsilon(1E-6),
+		iterationLimit(1000),
+		numbOfMedoids(1)
 		{
 	this->K = 0;
 }
@@ -45,14 +46,17 @@ CMRDCA::~CMRDCA() {
 
 void CMRDCA::cluster(int Kclusters) {
 	this->K = Kclusters;
+	std::cout << "INFO: initializing" << std::endl;
 	this->initialize();
 	bool stop;
 	bool changed;
 	do {
 		// Step 1: computation of the best prototypes
+		std::cout << "INFO: step 1 - computation of the best prototypes" << std::endl;
 		bestPrototypes();
 
 		if (this->dissimMatrices.size() > 1) {
+			std::cout << "INFO: step 2 - updating weights" << std::endl;
 			// Step 2: update weights
 			for (int k = 0; k < this->K; k++) {
 				util::CrispCluster &currentCluster = this->clusters.get()->at(k);
@@ -65,6 +69,7 @@ void CMRDCA::cluster(int Kclusters) {
 		}
 
 		// Step 3: definition of the best partition
+		std::cout << "INFO: step 3 - assigning elements to clusters" << std::endl;
 		changed = clusterAssign(*(this->clusters.get()));
 
 		// Stop criterion
@@ -95,6 +100,15 @@ bool CMRDCA::timeIsUp() const {
 	return (timeDif > CMRDCA::TOTALTIMELIMITSECONDS);
 }
 
+double CMRDCA::distanceToMedoids(int elemIndex, const util::IDissimMatrix& dissimMatrix, const std::set<int> &medoidSet) const {
+	double result = 0;
+	for (std::set<int>::const_iterator medoidIt = medoidSet.begin(); medoidIt != medoidSet.end(); medoidIt++) {
+		result += dissimMatrix.getDissim(elemIndex, *medoidIt);
+	}
+	return result;
+}
+
+
 double CMRDCA::updateWeights(util::CrispCluster &cluster, double maxValue, int clusterNum) {
 	int p;
 	cluster.getWeights(&p);
@@ -103,7 +117,7 @@ double CMRDCA::updateWeights(util::CrispCluster &cluster, double maxValue, int c
 	for (int h = 0; h < p; h++) { //productory
 		double sumNum = 0;
 		for (std::set<int>::const_iterator elI = cluster.getElements().get()->begin(); elI != cluster.getElements().get()->end(); elI++) {
-			sumNum += this->dissimMatrices[h]->getDissim(*elI, cluster.getCenter());
+			sumNum += distanceToMedoids(*elI, *(this->dissimMatrices[h].get()), *cluster.getMedoids().get());
 		}
 		num *= sumNum;
 	}
@@ -117,7 +131,7 @@ double CMRDCA::updateWeights(util::CrispCluster &cluster, double maxValue, int c
 	for (int j = 0; j < p; j++) {
 		double denominator = 0;
 		for (std::set<int>::const_iterator elI = cluster.getElements().get()->begin(); elI != cluster.getElements().get()->end(); elI++) {
-			denominator += this->dissimMatrices[j]->getDissim(*elI, cluster.getCenter());
+			denominator += distanceToMedoids(*elI, *(this->dissimMatrices[j].get()), *cluster.getMedoids().get());
 		}
 		if (denominator > epsilon) {
 			newWeights[j] = powNum / denominator;
@@ -139,27 +153,179 @@ double CMRDCA::updateWeights(util::CrispCluster &cluster, double maxValue, int c
 	return regret;
 }
 
-void CMRDCA::bestPrototypes() {
-	this->currentIteration++;
-	std::vector<util::CrispCluster> * const clustvecpoint = this->clusters.get();
-	for (int k = 0; k < K; k++) {
-		double bestResultForThisK = BIG_CONSTANT;
-		int newGk = 0;
-		util::CrispCluster &currentCluster = clustvecpoint->at(k);
-		for (int candidateMedoid = 0; candidateMedoid < this->nElems; candidateMedoid++) {
-			double totDissimForThisMedoid = 0.0;
-			for(std::set<int>::const_iterator cit = currentCluster.getElements().get()->begin(); cit != currentCluster.getElements().get()->end(); cit++) {
-				totDissimForThisMedoid +=
-						this->weightedAvgDissim(*cit, candidateMedoid, currentCluster);
-				if (totDissimForThisMedoid >= bestResultForThisK)
-					break;
+struct FrontierElement {
+	std::pair<typename std::set<int>,  double> state;
+	std::vector<int> currPos;
+	bool operator<(const FrontierElement& other) const {
+		return state.second < other.state.second;
+	}
+};
+
+static FrontierElement avanceOne(int posIndex, const FrontierElement& currState,
+		std::vector<MedoidDistance> &candidatMedoidsDistances) {
+	const int oldPos = currState.currPos[posIndex];
+	const int newPos = oldPos + 1;
+	std::vector<int> newPosVector = currState.currPos;
+	newPosVector[posIndex] += 1;
+
+	const double oldElemCost = candidatMedoidsDistances.at(oldPos).totalDistance;
+	const double newElemCost = candidatMedoidsDistances.at(newPos).totalDistance;
+
+	double setCost = currState.state.second;
+	setCost -= oldElemCost;
+	setCost += newElemCost;
+	std::set<int> medoids = currState.state.first;
+	medoids.erase(candidatMedoidsDistances.at(oldPos).medoidIndex);
+	medoids.insert(candidatMedoidsDistances.at(newPos).medoidIndex);
+
+	return FrontierElement( { std::make_pair(medoids, setCost), newPosVector });
+
+}
+
+std::pair<typename std::set<int>,  double>
+	CMRDCA::findBestState(std::pair<typename std::set<int>,  double> &initialState,
+			      	      std::vector<int> &initPos,
+			      	      std::vector<MedoidDistance> &candidatMedoidsDistances,
+			      	      const std::set<std::set<int> > &existingMedoids) {
+
+	std::set<FrontierElement> frontier({FrontierElement({initialState, initPos})});
+	while(frontier.size() > 0) {
+		std::set<FrontierElement>::iterator firstElementIt = frontier.begin();
+		FrontierElement elem = *firstElementIt;
+		frontier.erase(firstElementIt);
+		if (existingMedoids.find(elem.state.first) == existingMedoids.end() ) {
+			//is a new medoid set
+			return elem.state;
+		} else {
+			const int lastSetElementAtIndex = elem.currPos[elem.currPos.size() - 1];
+			if (lastSetElementAtIndex < (int)(candidatMedoidsDistances.size()-1)) {
+				FrontierElement el = avanceOne(elem.currPos.size() - 1, elem, candidatMedoidsDistances);
+				frontier.insert(el);
+			} else {
+				std::cerr << "WARNING: last element in set went to last position" << std::endl;
 			}
-			if (totDissimForThisMedoid < bestResultForThisK) {
-				bestResultForThisK = totDissimForThisMedoid;
-				newGk = candidateMedoid;
+			for (int i = initPos.size()-2; i >= 0; i--) {
+				const int myIndex = elem.currPos[i];
+				const int rightNeighborIndex = elem.currPos[i+1];
+				assert(rightNeighborIndex > myIndex);
+				if (((rightNeighborIndex - myIndex) > 1) && (myIndex < (int)(candidatMedoidsDistances.size()-1))) {
+					FrontierElement el = avanceOne(i, elem, candidatMedoidsDistances);
+					frontier.insert(el);
+				}
 			}
 		}
-		currentCluster.setCenter(newGk);
+	}
+	std::cerr << "WARNING: returning empty set for medoids" << std::endl;
+	return std::make_pair(std::set<int>(), -1);
+}
+
+void CMRDCA::computeBestClusterLocalKMedoidSet(util::CrispCluster &cluster, const int k, std::set<int> &result, const std::set<std::set<int> > &existingMedoids) {
+	std::vector<MedoidDistance> medoids;
+	medoids.reserve(cluster.getElements()->size());
+	for (std::set<int>::const_iterator it = cluster.getElements()->begin(); it != cluster.getElements()->end(); it++) {
+		int candidateMedoid = *it;
+		if (this->blackListedMedoids->find(candidateMedoid) != this->blackListedMedoids->end())
+			continue;
+		std::set<int> uniset({candidateMedoid});
+		double elemTotalDistance = calcJ(cluster, uniset);
+		medoids.push_back(MedoidDistance({candidateMedoid, elemTotalDistance}));
+	}
+	std::sort(medoids.begin(), medoids.end());
+	result.clear();
+	if ((int)medoids.size() >= k) {
+		double initCost = 0;
+		for (int i = 0; i < k; i++) {
+			result.insert(medoids[i].medoidIndex);
+			initCost += medoids[i].totalDistance;
+		}
+		double myNewJ = calcJ(cluster, result);
+		const double oldJ = calcJ(cluster);
+		if (oldJ < myNewJ) {
+			result.clear();
+			result.insert(cluster.getMedoids()->begin(), cluster.getMedoids()->end());
+			std::cerr << "WARNING: unable to find k non blacklisted best medoids inside the cluster. Returning the same set" << std::endl;
+		} else {
+			//myNewJ is better, now checking if this medoid set already exists elsewhere
+			if (existingMedoids.find(result) != existingMedoids.end()) {
+				//oh no! repeated medoid set
+				result.clear();
+				std::pair<typename std::set<int>,  double> initialState = std::make_pair(result, initCost);
+				std::vector<int> initPos;
+				initPos.reserve(k);
+				for (int i = 0; i < k; i++) {
+					initPos.push_back(i);
+				}
+				std::pair<typename std::set<int>,  double> bestState = findBestState(initialState, initPos, medoids, existingMedoids);
+				if (!bestState.first.empty()) {
+					result.insert(bestState.first.begin(), bestState.first.end());
+					myNewJ = calcJ(cluster, result);
+					if (oldJ < myNewJ) {
+						result.clear();
+						result.insert(cluster.getMedoids()->begin(), cluster.getMedoids()->end());
+						std::cerr << "WARNING: unable to find k non blacklisted best medoids inside the cluster. Returning the same set" << std::endl;
+					}
+				} else {
+					result.clear();
+					result.insert(cluster.getMedoids()->begin(), cluster.getMedoids()->end());
+					std::cerr << "WARNING: unable to find k non blacklisted best medoids inside the cluster. Returning the same set" << std::endl;
+				}
+
+			}
+		}
+	} else {
+		std::cerr << "WARNING: unable to find k non blacklisted medoids for cluster. Returning the same set" << std::endl;
+		result.insert(cluster.getMedoids()->begin(), cluster.getMedoids()->end());
+	}
+}
+
+void CMRDCA::computeBestKMedoidSet(util::CrispCluster &cluster, const int k, std::set<int> &result, const std::set<std::set<int> > &existingMedoids) {
+	std::vector<MedoidDistance> medoids;
+	medoids.reserve(this->nElems);
+	for (int candidateMedoid = 0; candidateMedoid < this->nElems; candidateMedoid++) {
+		if (this->blackListedMedoids->find(candidateMedoid) != this->blackListedMedoids->end())
+			continue;
+		std::set<int> uniset({candidateMedoid});
+		double elemTotalDistance = calcJ(cluster, uniset);
+		medoids.push_back(MedoidDistance({candidateMedoid, elemTotalDistance}));
+	}
+	std::sort(medoids.begin(), medoids.end());
+	std::set<int> initialSet;
+	double initCost = 0;
+	for (int i = 0; i < k; i++) {
+		initialSet.insert(medoids[i].medoidIndex);
+		initCost += medoids[i].totalDistance;
+	}
+	result.clear();
+	if (existingMedoids.find(initialSet) == existingMedoids.end()) {
+		result.insert(initialSet.begin(), initialSet.end());
+	} else {
+		std::pair<typename std::set<int>,  double> initialState = std::make_pair(initialSet, initCost);
+		std::vector<int> initPos;
+		initPos.reserve(k);
+		for (int i = 0; i < k; i++) {
+			initPos.push_back(i);
+		}
+		std::pair<typename std::set<int>,  double> bestState = findBestState(initialState, initPos, medoids, existingMedoids);
+		result.insert(bestState.first.begin(), bestState.first.end());
+	}
+}
+
+void CMRDCA::bestPrototypes() {
+	this->currentIteration++;
+	std::set<std::set<int> >  medoidSet;
+	for (int k = 0; k < K; k++) {
+		std::shared_ptr<std::set<int> > newMedoids(new std::set<int>());
+		util::CrispCluster &currentCluster = this->clusters->at(k);
+		if (this->useLocalMedoids) {
+			computeBestClusterLocalKMedoidSet(currentCluster, this->numbOfMedoids, *(newMedoids.get()), medoidSet);
+		} else {
+			computeBestKMedoidSet(currentCluster, this->numbOfMedoids, *(newMedoids.get()), medoidSet);
+		}
+		currentCluster.setMedoids(newMedoids);
+		if (newMedoids->size() == 0) {
+			std::cerr << "WARNING: empty medoid set" << std::endl;
+		}
+		medoidSet.insert(*(newMedoids.get()));
 	}
 }
 
@@ -170,16 +336,26 @@ void CMRDCA::initialize() {
 	this->clusters.reset(new std::vector<util::CrispCluster>());
 	std::vector<util::CrispCluster> * const clustvecpoint = this->clusters.get();
 	clustvecpoint->reserve(this->K);
+	this->blackListedMedoids = blackListElementsForMedoids(0.3);
 	{
-		std::set<int> centers;
+		std::set<std::set<int>> centers;
 		for (int i = 0; i < this->K; i++) {
 			util::CrispCluster fc = util::CrispCluster(this->nCriteria);
-			int nextCenter;
+			std::shared_ptr<std::set<int> > medoidSet(new std::set<int>());
+			int nextMedoidCenter;
 			do {
-				nextCenter = distribution(CMRDCA::generator);
-			} while (centers.find(nextCenter) != centers.end());
-			centers.insert(nextCenter);
-			fc.setCenter(nextCenter);
+				medoidSet->clear();
+				while ((int)medoidSet->size() < this->numbOfMedoids) {
+					nextMedoidCenter = distribution(CMRDCA::generator);
+					if ( (this->blackListedMedoids->find(nextMedoidCenter) != this->blackListedMedoids->end()) || (medoidSet->find(nextMedoidCenter) != medoidSet->end()) )
+						continue;
+					else {
+						medoidSet->insert(nextMedoidCenter);
+					}
+				}
+			} while (centers.find(*(medoidSet.get())) != centers.end());
+			centers.insert(*(medoidSet.get()));
+			fc.setMedoids(medoidSet);
 
 			clustvecpoint->push_back(fc);
 		}
@@ -204,40 +380,39 @@ double CMRDCA::calcJ(const std::shared_ptr<std::vector<util::CrispCluster> > &cl
 double CMRDCA::calcJ(const util::CrispCluster &cluster) const {
 	double clusterJ = 0.0;
 	for (std::set<int>::const_iterator cit = cluster.getElements().get()->begin(); cit != cluster.getElements().get()->end(); cit++) {
-		clusterJ += weightedAvgDissim(*cit, cluster.getCenter(), cluster);
+		clusterJ += weightedAvgDissim(*cit, cluster);
 	}
 
 	return clusterJ;
 
 }
 
-double CMRDCA::minimizeRegret(const util::CrispCluster &c, double currentRegret) const {
-	return minimizeRegret(c, c.getCenter(), currentRegret);
-}
-
-double CMRDCA::minimizeRegret(const util::CrispCluster &c, int center, double currentRegret) const {
-	double sumRegret = 0.0;
-	for (std::set<int>::const_iterator cit = c.getElements().get()->begin(); cit != c.getElements().get()->end(); cit++) {
-		sumRegret += weightedAvgDissim(*cit, center, c);
-		if (sumRegret > currentRegret) return BIG_CONSTANT;
+double CMRDCA::calcJ(const util::CrispCluster &cluster, const std::set<int> &medoids) const {
+	double clusterJ = 0.0;
+	for (std::set<int>::const_iterator cit = cluster.getElements().get()->begin(); cit != cluster.getElements().get()->end(); cit++) {
+		clusterJ += weightedAvgDissim(*cit, cluster, medoids);
 	}
 
-	return sumRegret;
+	return clusterJ;
+
 }
 
-double CMRDCA::weightedAvgDissim(int element, int medoid, const util::CrispCluster &cluster) const {
+double CMRDCA::weightedAvgDissim(int element, const util::CrispCluster &cluster) const {
+	return weightedAvgDissim(element, cluster, *(cluster.getMedoids().get()));
+}
+
+double CMRDCA::weightedAvgDissim(int element, const util::CrispCluster &cluster, const std::set<int> &medoids) const {
 	double avgDissim = 0;
 	double sumWeights = 0;
 	for (int j = 0; j < nCriteria; ++j) {
 		const double critJWeight = cluster.weightOf(j);
-		avgDissim += this->dissimMatrices[j]->getDissim(element, medoid) * critJWeight;
+		avgDissim += distanceToMedoids(element,  *(this->dissimMatrices[j].get()), medoids) * critJWeight;
 		sumWeights += critJWeight;
 	}
 	avgDissim /= sumWeights;
 
 	return avgDissim;
 }
-
 
 std::shared_ptr<std::vector<util::CrispCluster> > CMRDCA::getClustersCopy() const {
 	std::shared_ptr<std::vector<util::CrispCluster> >
@@ -253,58 +428,66 @@ void CMRDCA::seed_random_engine(unsigned seed) {
 bool CMRDCA::clusterAssign(std::vector<util::CrispCluster> &clusters) {
 	bool hasChanged = false;
 	for (int i = 0; i < this->nElems; i++) {
-		int centerOf;
-		if ((centerOf = isCenterOf(i)) == -1) {
-			//element i is not the medoid of any cluster
-			int clusterIndexMinDist = -1;
-			double minDist = this->BIG_CONSTANT;
+		int clusterIndexMinDist = -1;
+		double minDist = this->BIG_CONSTANT;
+		if (this->clusterIndexForElement[i] >= 0 && this->clusterIndexForElement[i] < (int)clusters.size()) {
+			clusterIndexMinDist = clusterIndexForElement[i];
+			minDist = weightedAvgDissim(i, clusters[clusterIndexMinDist]);
+		}
+
+		for (size_t k = 0; k < clusters.size(); k++) {
+			const double myDist = weightedAvgDissim(i, clusters[k]);
+			if ((myDist + epsilon) < minDist) {
+				minDist = myDist;
+				clusterIndexMinDist = k;
+			}
+		}
+
+		if (this->clusterIndexForElement[i] != clusterIndexMinDist) {
 			if (this->clusterIndexForElement[i] >= 0 && this->clusterIndexForElement[i] < (int)clusters.size()) {
-				clusterIndexMinDist = clusterIndexForElement[i];
-				minDist = weightedAvgDissim(i, clusters[clusterIndexMinDist].getCenter(), clusters[clusterIndexMinDist]);
+				clusters[this->clusterIndexForElement[i]].remove(i);
 			}
-
-			for (size_t k = 0; k < clusters.size(); k++) {
-				const double myDist = weightedAvgDissim(i, clusters[k].getCenter(), clusters[k]);
-				if ((myDist + epsilon) < minDist) {
-					minDist = myDist;
-					clusterIndexMinDist = k;
-				}
-			}
-
-			if (this->clusterIndexForElement[i] != clusterIndexMinDist) {
-				if (this->clusterIndexForElement[i] >= 0 && this->clusterIndexForElement[i] < (int)clusters.size()) {
-					clusters[this->clusterIndexForElement[i]].remove(i);
-				}
-				this->clusterIndexForElement[i] = clusterIndexMinDist;
-				clusters[this->clusterIndexForElement[i]].insert(i);
-				hasChanged = true;
-			}
-		} else {
-			//i is medoid of a cluster
-			if (this->clusterIndexForElement[i] != centerOf) {
-				if (this->clusterIndexForElement[i] >= 0 && this->clusterIndexForElement[i] < (int)clusters.size()) {
-					clusters[this->clusterIndexForElement[i]].remove(i);
-				}
-				this->clusterIndexForElement[i] = centerOf;
-				clusters[centerOf].insert(i);
-				hasChanged = true;
-			}
+			this->clusterIndexForElement[i] = clusterIndexMinDist;
+			clusters[this->clusterIndexForElement[i]].insert(i);
+			hasChanged = true;
 		}
 	}
 
 	return hasChanged;
 }
 
-// Return the index of the first cluster in which the index passed as parameter is the center
-int CMRDCA::isCenterOf(int index) {
-	std::vector<util::CrispCluster> &cp = *(this->clusters.get());
-	for (size_t i = 0; i < cp.size(); i++) {
-		if (cp[i].getCenter() == index) {
-			return i;
+std::shared_ptr<std::set<int>> CMRDCA::blackListElementsForMedoids(double percentOfMeanVariance) {
+	std::shared_ptr<std::set<int>> result(new std::set<int>());
+
+	double varEl[this->nElems];
+	double meanVar = 0;
+
+	for (int el = 0; el < this->nElems; el++) {
+		double sumSQ = 0;
+		double avg = 0;
+		for (int elJ = 0; elJ < this->nElems; elJ++) {
+		    double dissimToElj = 0;
+		    for (int p = 0; p < nCriteria; p++) {
+		        dissimToElj += this->dissimMatrices[p]->getDissim(el, elJ)/nCriteria;
+		    }
+		    sumSQ += dissimToElj*dissimToElj;
+		    avg += dissimToElj;
+		}
+		avg /= this->nElems;
+		varEl[el] = sumSQ/this->nElems - avg*avg;
+		meanVar += varEl[el];
+	}
+	meanVar /= this->nElems;
+
+	for (int el = 0; el < this->nElems; el++) {
+		if (varEl[el] < percentOfMeanVariance*meanVar) {
+			result->insert(el);
 		}
 	}
-	return -1;
+
+	return result;
 }
+
 
 } /* namespace clustering */
 

@@ -14,7 +14,7 @@ namespace clustering {
 
 class CMRDCAGlobal : public CMRDCA {
 public:
-	CMRDCAGlobal(const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMatrices);
+	CMRDCAGlobal(const std::vector<std::shared_ptr<util::IDissimMatrix>>& dissimMatrices);
 	virtual ~CMRDCAGlobal();
 	virtual void cluster(int Kclusters);
 

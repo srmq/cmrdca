@@ -17,13 +17,24 @@
 #include <ctime>
 #include <iostream>
 #include <sstream>
-
+#include <set>
 
 namespace clustering {
 
+struct MedoidDistance {
+	int medoidIndex;
+	double totalDistance;
+
+	bool operator<(const MedoidDistance& other) const {
+		return totalDistance < other.totalDistance;
+	}
+
+};
+
+
 class CMRDCA {
 public:
-	CMRDCA(const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMatrices);
+	CMRDCA(const std::vector<std::shared_ptr<util::IDissimMatrix>>& dissimMatrices);
 	virtual ~CMRDCA();
 	virtual void cluster(int Kclusters);
 
@@ -36,23 +47,34 @@ public:
 	std::shared_ptr<std::vector<util::CrispCluster> > getClusters() { return clusters; 	 }
 	std::shared_ptr<std::vector<util::CrispCluster> > getClustersCopy() const;
 	static void seed_random_engine(unsigned seed);
-	int getIterationsToConverge() {return this->currentIteration; }
+	int getIterationsToConverge() const {return this->currentIteration; }
+	void setNumbOfMedoids(int number) {this->numbOfMedoids = number;}
+	int getNumbOfMedoids() const { return this->numbOfMedoids; }
+	int getIterationLimit() const {return this->iterationLimit;}
+	void setIterationLimit(int numIter) { this->iterationLimit = numIter; }
+	std::shared_ptr<std::set<int>> blackListElementsForMedoids(double percentOfMeanVariance);
+	inline void setUseLocalMedoids(bool localMedoids) { this->useLocalMedoids = localMedoids; }
 
 private:
 	time_t initialTime = time(NULL);
 	static std::default_random_engine generator;
-	int isCenterOf(int index);
+	bool useLocalMedoids = false;
 
-	double weightedAvgDissim(int element, int medoid, const util::CrispCluster &cluster) const;
-	double minimizeRegret(const util::CrispCluster &c, double currentRegret) const;
-	double minimizeRegret(const util::CrispCluster &c, int center, double currentRegret) const;
+	double weightedAvgDissim(int element, const util::CrispCluster &cluster) const;
+	double weightedAvgDissim(int element, const util::CrispCluster &cluster, const std::set<int> &medoids) const;
 	double updateWeights(util::CrispCluster &cluster, double maxValue, int clusterNum);
+	std::pair<typename std::set<int>,  double>
+		findBestState(std::pair<typename std::set<int>,  double> &initialState,
+				      std::vector<int> &initPos,
+				      std::vector<MedoidDistance> &candidatMedoidsDistances,
+				      const std::set<std::set<int> > &existingMedoids);
+
 protected:
-	const std::vector<std::shared_ptr<util::DissimMatrix>>& dissimMatrices;
+	const std::vector<std::shared_ptr<util::IDissimMatrix>>& dissimMatrices;
 	const int nElems;
 	std::uniform_int_distribution<int> distribution;
 	const int nCriteria;
-	double maxWeightAbsoluteDifferenceGlobal = 1.0;
+	double maxWeightAbsoluteDifferenceGlobal;
 	std::vector<int> clusterIndexForElement;
 	void bestPrototypes();
 
@@ -60,12 +82,17 @@ protected:
 	std::shared_ptr<std::vector<util::CrispCluster> > clusters;
 	int currentIteration;
 	double lastJ;
-	double epsilon = 1E-6;
-	int iterationLimit = 1000;
+	double epsilon;
+	int iterationLimit;
+	int numbOfMedoids;
+	std::shared_ptr<std::set<int> > blackListedMedoids;
 	void initialize();
 	bool timeIsUp() const;
 	bool clusterAssign(std::vector<util::CrispCluster> &clusters);
-
+	double distanceToMedoids(int elemIndex, const util::IDissimMatrix& dissimMatrix, const std::set<int> &medoidSet) const;
+	void computeBestKMedoidSet(util::CrispCluster &cluster, int k, std::set<int> &result, const std::set<std::set<int> > &existingMedoids);
+	void computeBestClusterLocalKMedoidSet(util::CrispCluster &cluster, const int k, std::set<int> &result, const std::set<std::set<int> > &existingMedoids);
+	double calcJ(const util::CrispCluster &cluster, const std::set<int> &medoids) const;
 };
 
 } /* namespace clustering */

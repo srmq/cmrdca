@@ -15,11 +15,11 @@
 
 namespace util {
 
-CrispCluster::CrispCluster(const int p) : p(p), center(-1), lambdaWeights(new double[p], std::default_delete<double[]>()), elements(new std::set<int>){
+CrispCluster::CrispCluster(const int p) : p(p), medoids(new std::set<int>()), lambdaWeights(new double[p], std::default_delete<double[]>()), elements(new std::set<int>){
 	std::fill_n(lambdaWeights.get(), p, 1.0 /*/(double)p */); //product of weights = 1
 }
 
-CrispCluster::CrispCluster(const CrispCluster& copyFrom) : p(copyFrom.p), center(copyFrom.center), lambdaWeights(new double[copyFrom.p], std::default_delete<double[]>()), elements(new std::set<int>(*(copyFrom.elements.get()))) {
+CrispCluster::CrispCluster(const CrispCluster& copyFrom) : p(copyFrom.p), medoids(new std::set<int>(*(copyFrom.medoids.get()))), lambdaWeights(new double[copyFrom.p], std::default_delete<double[]>()), elements(new std::set<int>(*(copyFrom.elements.get()))) {
 	memcpy(this->lambdaWeights.get(), copyFrom.lambdaWeights.get(), (this->p)*sizeof(double));
 }
 
