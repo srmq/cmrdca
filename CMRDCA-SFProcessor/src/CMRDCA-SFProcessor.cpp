@@ -41,6 +41,7 @@ static std::vector<std::shared_ptr<util::IDissimMatrix>> dissimMatrices;
 static unsigned int procCount;
 static bool useDissimFloats = false;
 static bool useLocalMedoids = false;
+static double blackListMedoidsPercentVar = 0.3;
 
 static std::pair<std::shared_ptr<util::IDissimMatrix>, std::shared_ptr<std::vector<std::string> > >
 	parseDissimMatrix(const std::string& fileName) {
@@ -251,6 +252,9 @@ static void readConfigFile(char configFileName[]) {
 		} else if (line.find("(useLocalMedoids)") != std::string::npos) {
 			getline(f, line);
 			useLocalMedoids = (atoi(line.c_str()) != 0);
+		} else if (line.find("(blackListPercentOfMeanVar)") != std::string::npos) {
+			getline(f, line);
+			blackListMedoidsPercentVar = atof(line.c_str());
 		}
 	}
 
@@ -365,6 +369,7 @@ int main(int argc, char *argv[]) {
 				}
 				clusteringAlgo->setNumbOfMedoids(numMedoids);
 				clusteringAlgo->setUseLocalMedoids(useLocalMedoids);
+				clusteringAlgo->setBlackListPercentOfMeanVariance(blackListMedoidsPercentVar);
 				clusteringAlgo->cluster(k);
 				std::shared_ptr<std::vector<util::CrispCluster> > const myClusters = clusteringAlgo->getClusters();
 				const double myJ = clusteringAlgo->calcJ(myClusters);
@@ -425,6 +430,7 @@ int main(int argc, char *argv[]) {
 			}
 			clusteringAlgo->setNumbOfMedoids(numMedoids);
 			clusteringAlgo->setUseLocalMedoids(useLocalMedoids);
+			clusteringAlgo->setBlackListPercentOfMeanVariance(blackListMedoidsPercentVar);
 			clusteringAlgo->cluster(k);
 			std::shared_ptr<std::vector<util::CrispCluster> > const myClusters = clusteringAlgo->getClusters();
 			const double myJ = clusteringAlgo->calcJ(myClusters);

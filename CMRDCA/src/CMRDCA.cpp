@@ -336,7 +336,11 @@ void CMRDCA::initialize() {
 	this->clusters.reset(new std::vector<util::CrispCluster>());
 	std::vector<util::CrispCluster> * const clustvecpoint = this->clusters.get();
 	clustvecpoint->reserve(this->K);
-	this->blackListedMedoids = blackListElementsForMedoids(0.3);
+	if (this->blackListPercentOfMeanVariance > 0) {
+		this->blackListedMedoids = blackListElementsForMedoids(this->blackListPercentOfMeanVariance);
+	} else {
+		this->blackListedMedoids = std::shared_ptr<std::set<int>>(new std::set<int>());
+	}
 	{
 		std::set<std::set<int>> centers;
 		for (int i = 0; i < this->K; i++) {

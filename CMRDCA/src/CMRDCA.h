@@ -54,11 +54,13 @@ public:
 	void setIterationLimit(int numIter) { this->iterationLimit = numIter; }
 	std::shared_ptr<std::set<int>> blackListElementsForMedoids(double percentOfMeanVariance);
 	inline void setUseLocalMedoids(bool localMedoids) { this->useLocalMedoids = localMedoids; }
+	inline void setBlackListPercentOfMeanVariance(double lessThanPercentage) { this->blackListPercentOfMeanVariance = lessThanPercentage; }
 
 private:
 	time_t initialTime = time(NULL);
 	static std::default_random_engine generator;
 	bool useLocalMedoids = false;
+	double blackListPercentOfMeanVariance = 0.3;
 
 	double weightedAvgDissim(int element, const util::CrispCluster &cluster) const;
 	double weightedAvgDissim(int element, const util::CrispCluster &cluster, const std::set<int> &medoids) const;
