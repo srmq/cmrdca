@@ -87,7 +87,7 @@ static std::pair<std::shared_ptr<util::IDissimMatrix>, std::shared_ptr<std::vect
 
 NameSort::NameSort(std::unordered_map<std::string*, int> &refOrder) : refOrder(refOrder) { }
 
-bool NameSort::operator() (std::pair<std::string*, int> &a, std::pair<std::string*, int> &b) {
+bool NameSort::operator() (const std::pair<std::string*, int> &a, const std::pair<std::string*, int> &b) {
 		return this->refOrder[a.first] < refOrder[b.first];
 }
 

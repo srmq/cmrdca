@@ -14,7 +14,7 @@
 class NameSort {
 public:
 	NameSort(std::unordered_map<std::string*, int> &refOrder);
-	bool operator() (std::pair<std::string*, int> &a, std::pair<std::string*, int> &b);
+	bool operator() (const std::pair<std::string*, int> &a, const std::pair<std::string*, int> &b);
 
 private:
 	std::unordered_map<std::string*, int> & refOrder;
