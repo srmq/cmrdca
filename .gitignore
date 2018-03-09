@@ -1,0 +1,4 @@
+/CMRDCA/src/.directory
+/CMRDCA/src/*.o
+/CMRDCA/src/*.d
+/CMRDCA/src/libCMRDCA.a
