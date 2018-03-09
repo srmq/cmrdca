@@ -2,3 +2,6 @@
 /CMRDCA/src/*.o
 /CMRDCA/src/*.d
 /CMRDCA/src/libCMRDCA.a
+/CMRDCA-SFProcessor/src/*.o
+/CMRDCA-SFProcessor/src/*.d
+/CMRDCA-SFProcessor/src/CMRDCA-SFProcessor
