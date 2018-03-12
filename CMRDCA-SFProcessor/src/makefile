@@ -1,7 +1,7 @@
 USER_OBJDIR = ../../CMRDCA/src
 CXX = g++
-CXXFLAGS = -I"${USER_OBJDIR}" -O3 -march=core2 -mfpmath=sse -Wall -c -fmessage-length=0 -std=c++11 -lm -MMD -MP
-LDFLAGS = -lm
+CXXFLAGS = -I"${USER_OBJDIR}" -O3 -march=core2 -mfpmath=sse -fopenmp -Wall -c -fmessage-length=0 -std=c++11 -lm -MMD -MP
+LDFLAGS = -lm -lgomp
 OBJECTS = CMRDCA-SFProcessor.o
 USER_OBJS = ${USER_OBJDIR}/libCMRDCA.a
 DEPENDS = ${OBJECTS:.o=.d}

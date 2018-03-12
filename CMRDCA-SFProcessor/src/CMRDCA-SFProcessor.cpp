@@ -27,6 +27,7 @@
 #include <locale>
 #include <unordered_map>
 #include <cassert>
+#include <omp.h>
 #include "CMRDCA-SFProcessor.h"
 
 static std::vector<std::string> inputFiles;
@@ -192,6 +193,7 @@ void printIndices(int k,
 	out << confusionMatrix.OERCIndex() << std::endl;
 	out << ">>>>>>>>>>>> NMI  Index    is: ";
 	out << confusionMatrix.nMIIndex() << std::endl;
+	out.flush();
 }
 
 // trim from end (in place)
@@ -298,6 +300,7 @@ int main(int argc, char *argv[]) {
 	}
 	procCount = std::thread::hardware_concurrency();
 	readConfigFile(argv[1]);
+	omp_set_num_threads(procCount);
 	parseDissimMatrices();
 
 	std::shared_ptr<std::pair<std::vector<int>, std::vector<std::string> > > classLabelsAndNames = classLabelsForObjects();
@@ -313,127 +316,33 @@ int main(int argc, char *argv[]) {
 		std::cerr << "Unable to open output file: " << outputFile << std::endl;
 	}
 
-
-
-	if (procCount > 1) {
-		unsigned int procId = 0;
-		bool quitwhile = false;
-		int pipeParentChild[procCount][2]; // PARENT WRITES to CHILD, CHILD READS from PARENT
-		int pipeChildParent[procCount][2]; // PARENT READS from CHILD, CHILD WRITES to PARENT
-		pid_t cpid;
-		do {
-			if (pipe(pipeParentChild[procId]) == -1) {
-				perror("pipe");
-			    exit(EXIT_FAILURE);
-			}
-			if (pipe(pipeChildParent[procId]) == -1) {
-				perror("pipe");
-			    exit(EXIT_FAILURE);
-			}
-
-			cpid = fork();
-			if (cpid == -1) {
-			    perror("fork");
-			    exit(EXIT_FAILURE);
-			}
-
-			if (cpid == 0) {    /* I am the child */
-				// close WRITE in pipeParentChild
-				close(pipeParentChild[procId][1]);
-				// close READ in pipeChildParent
-				close(pipeChildParent[procId][0]);
-				quitwhile = true;
-			} else {			/* I am the master */
-				// close READ in pipeParentChild
-				close(pipeParentChild[procId][0]);
-				// close WRITE in pipeChildParent
-				close(pipeChildParent[procId][1]);
-				procId++;
-			}
-		} while (procId < procCount && !quitwhile);
-		if (cpid == 0) {    /* I am the child do stuff */
-			clustering::CMRDCA::seed_random_engine(2u*procId + 1u);
-			for (int i = procId; i < numInicializacao; i=i+procCount) {
-				outFile << "Run number ";
-				outFile << i;
-				outFile << std::endl;
-				clustering::CMRDCA *clusteringAlgo;
-				if (argc == 2) {
-					clusteringAlgo = new clustering::CMRDCA(dissimMatrices);
-				} else {
-					clusteringAlgo = new clustering::CMRDCAGlobal(dissimMatrices);
-					outFile << "RUNNING GLOBAL" << std::endl;
-				}
-				if (numIteracoes > 0) {
-					clusteringAlgo->setIterationLimit(numIteracoes);
-				}
-				clusteringAlgo->setNumbOfMedoids(numMedoids);
-				clusteringAlgo->setUseLocalMedoids(useLocalMedoids);
-				clusteringAlgo->setBlackListPercentOfMeanVariance(blackListMedoidsPercentVar);
-				clusteringAlgo->cluster(k);
-				std::shared_ptr<std::vector<util::CrispCluster> > const myClusters = clusteringAlgo->getClusters();
-				const double myJ = clusteringAlgo->calcJ(myClusters);
-				outFile << "J: ";
-				outFile << myJ;
-				outFile << std::endl;
-				if (myJ < bestJ) {
-					bestJ = myJ;
-					bestClusters = clusteringAlgo->getClustersCopy();
-				}
-				delete(clusteringAlgo);
-			}
-			write(pipeChildParent[procId][1], &bestJ, sizeof(double));
-			close(pipeChildParent[procId][1]);
-			bool amITheBest;
-			read(pipeParentChild[procId][0], &amITheBest, sizeof(bool)); // le resultado
-			if (amITheBest) {
-				printIndices(k, bestClusters, classLabelsAndNames->first, classLabelsAndNames->second, bestJ, outFile);
-			}
-		} else {			/* I am the master get results */
-			double overallBestJ;
-			read(pipeChildParent[0][0], &overallBestJ, sizeof(double)); // le resultado
-			unsigned int bestIndex = 0;
-			for (unsigned int i = 1; i < procCount; i++) {
-				double procBestJ;
-				read(pipeChildParent[i][0], &procBestJ, sizeof(double)); // le resultado
-				if (procBestJ > overallBestJ) {
-					overallBestJ = procBestJ;
-					bestIndex = i;
-				}
-			}
-			const bool falseConst = false;
-			const bool trueConst = true;
-			for (unsigned int i = 0; i < procCount; i++) {
-				if (i != bestIndex) {
-					write(pipeParentChild[i][1], &falseConst, sizeof(bool));
-					close(pipeParentChild[i][1]);
-				} else {
-					write(pipeParentChild[i][1], &trueConst, sizeof(bool));
-					close(pipeParentChild[i][1]);
-				}
-			}
-		}
-	} else {
-		for (int i = 0; i < numInicializacao; i++) {
+	#pragma omp parallel for
+	for (int i = 0; i < numInicializacao; i++) {
+		#pragma omp critical
+		{
 			outFile << "Run number ";
 			outFile << i;
 			outFile << std::endl;
-			clustering::CMRDCA *clusteringAlgo;
-			if (argc == 2) {
-				clusteringAlgo = new clustering::CMRDCA(dissimMatrices);
-			} else {
-				clusteringAlgo = new clustering::CMRDCAGlobal(dissimMatrices);
-				outFile << "RUNNING GLOBAL" << std::endl;
-			}
-			if (numIteracoes > 0) {
-				clusteringAlgo->setIterationLimit(numIteracoes);
-			}
-			clusteringAlgo->setNumbOfMedoids(numMedoids);
-			clusteringAlgo->setUseLocalMedoids(useLocalMedoids);
-			clusteringAlgo->setBlackListPercentOfMeanVariance(blackListMedoidsPercentVar);
-			clusteringAlgo->cluster(k);
-			std::shared_ptr<std::vector<util::CrispCluster> > const myClusters = clusteringAlgo->getClusters();
-			const double myJ = clusteringAlgo->calcJ(myClusters);
+		}
+		clustering::CMRDCA *clusteringAlgo;
+		if (argc == 2) {
+			clusteringAlgo = new clustering::CMRDCA(dissimMatrices);
+		} else {
+			clusteringAlgo = new clustering::CMRDCAGlobal(dissimMatrices);
+			#pragma omp critical
+			outFile << "RUNNING GLOBAL" << std::endl;
+		}
+		if (numIteracoes > 0) {
+			clusteringAlgo->setIterationLimit(numIteracoes);
+		}
+		clusteringAlgo->setNumbOfMedoids(numMedoids);
+		clusteringAlgo->setUseLocalMedoids(useLocalMedoids);
+		clusteringAlgo->setBlackListPercentOfMeanVariance(blackListMedoidsPercentVar);
+		clusteringAlgo->cluster(k);
+		std::shared_ptr<std::vector<util::CrispCluster> > const myClusters = clusteringAlgo->getClusters();
+		const double myJ = clusteringAlgo->calcJ(myClusters);
+		#pragma omp critical
+		{
 			outFile << "J: ";
 			outFile << myJ;
 			outFile << std::endl;
@@ -441,9 +350,12 @@ int main(int argc, char *argv[]) {
 				bestJ = myJ;
 				bestClusters = clusteringAlgo->getClustersCopy();
 			}
-			delete(clusteringAlgo);
 		}
-		printIndices(k, bestClusters, classLabelsAndNames->first, classLabelsAndNames->second, bestJ, outFile);
+		delete(clusteringAlgo);
 	}
+	printIndices(k, bestClusters, classLabelsAndNames->first, classLabelsAndNames->second, bestJ, outFile);
+
+	outFile.flush();
+	outFile.close();
 	return(0);
 }
