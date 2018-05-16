@@ -279,16 +279,14 @@ static std::shared_ptr<std::pair<std::vector<int>, std::vector<std::string> > >
 	result->first.reserve(n);
 	result->second.reserve(n);
 
-	const char* delimiters = ",";
 	for (int i = 0; i < n; i++) {
 		std::string line;
 		getline(f, line);
-		char cstr[line.length() + 1];
-		strcpy(cstr, line.c_str());
-		char *token = strtok(cstr, delimiters);
-		result->first.push_back(atoi(token));
-		token = strtok(NULL, delimiters);
-		result->second.push_back(token);
+		const size_t commaPos = line.find_first_of(',');
+		const std::string token = line.substr(0, commaPos);
+		result->first.push_back(std::stoi(token));
+		const std::string name = line.substr(commaPos+1, line.size());
+		result->second.push_back(name);
 	}
 	return result;
 }
